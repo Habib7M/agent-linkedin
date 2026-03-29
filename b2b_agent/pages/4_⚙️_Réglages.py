@@ -5,6 +5,7 @@ import streamlit as st
 from pathlib import Path
 from core.db import init_db
 from core.config import load_config
+from core.auth import get_usage, is_admin
 
 st.set_page_config(page_title="Réglages", page_icon="⚙️", layout="wide")
 
@@ -14,7 +15,33 @@ if not st.session_state.get("logged_in"):
 
 init_db()
 st.title("⚙️ Réglages")
-st.markdown("---")
+
+client_id = st.session_state.get("client_id", "")
+
+# ==========================================
+# Quota du mois
+# ==========================================
+if not is_admin(client_id):
+    usage = get_usage(client_id)
+    st.markdown("### 📊 Votre utilisation ce mois")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        pct_p = int(usage["prospects"] / max(usage["quota_prospects"], 1) * 100)
+        st.metric("Prospects trouvés", f"{usage['prospects']} / {usage['quota_prospects']}")
+        st.progress(min(pct_p, 100) / 100)
+    with col2:
+        pct_m = int(usage["messages"] / max(usage["quota_messages"], 1) * 100)
+        st.metric("Messages IA générés", f"{usage['messages']} / {usage['quota_messages']}")
+        st.progress(min(pct_m, 100) / 100)
+
+    st.markdown("---")
+
+# ==========================================
+# Votre offre
+# ==========================================
+st.markdown("### ✏️ Votre offre")
+st.markdown("L'IA utilise ces infos pour personnaliser les messages de prospection.")
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
@@ -38,34 +65,16 @@ def save_env(values):
 env = load_env()
 cfg = load_config()
 
-# ==========================================
-# 1. Clé API
-# ==========================================
-st.markdown("### 1. Clé API")
-st.markdown("Pour que l'IA fonctionne, vous avez besoin d'une clé Mistral AI (entreprise française). [Créer un compte gratuit →](https://console.mistral.ai/)")
-
-mistral_key = st.text_input(
-    "Collez votre clé ici",
-    value=env.get("MISTRAL_API_KEY", ""),
-    type="password",
-    placeholder="Votre clé Mistral...",
+coach_product = st.text_input(
+    "Qu'est-ce que vous vendez ?",
+    value=env.get("COACH_PRODUCT", cfg.coach_product),
+    placeholder="Ex: Coaching de leadership",
 )
-
-if mistral_key and mistral_key not in ("votre-cle-ici", ""):
-    st.success("✅ Clé configurée")
-else:
-    st.warning("Clé manquante — l'IA ne pourra pas écrire les messages")
-
-st.markdown("---")
-
-# ==========================================
-# 2. Votre offre
-# ==========================================
-st.markdown("### 2. Votre offre")
-st.markdown("L'IA utilise ces infos pour personnaliser les messages.")
-
-coach_product = st.text_input("Qu'est-ce que vous vendez ?", value=env.get("COACH_PRODUCT", cfg.coach_product), placeholder="Ex: Coaching de leadership")
-coach_icp = st.text_input("À qui ?", value=env.get("COACH_ICP", cfg.coach_icp), placeholder="Ex: Coachs de vie indépendants")
+coach_icp = st.text_input(
+    "À qui ?",
+    value=env.get("COACH_ICP", cfg.coach_icp),
+    placeholder="Ex: Dirigeants de PME",
+)
 coach_value_prop = st.text_area(
     "Pourquoi devraient-ils s'intéresser ?",
     value=env.get("COACH_VALUE_PROP", cfg.coach_value_prop),
@@ -76,10 +85,10 @@ coach_value_prop = st.text_area(
 st.markdown("---")
 
 # ==========================================
-# 3. Email (optionnel)
+# Email (optionnel)
 # ==========================================
-st.markdown("### 3. Email (optionnel)")
-st.markdown("Pour que l'app envoie les emails automatiquement. Sinon, vous pouvez copier-coller les messages à la main.")
+st.markdown("### 📧 Email (optionnel)")
+st.markdown("Pour envoyer les emails automatiquement. Sinon, copiez-collez les messages.")
 
 show_email = st.toggle("Configurer l'envoi d'emails")
 
@@ -115,9 +124,8 @@ st.markdown("---")
 # ==========================================
 # Sauvegarder
 # ==========================================
-if st.button("💾 Sauvegarder les réglages", type="primary"):
+if st.button("💾 Sauvegarder", type="primary"):
     save_env({
-        "MISTRAL_API_KEY": mistral_key,
         "COACH_PRODUCT": coach_product,
         "COACH_ICP": coach_icp,
         "COACH_VALUE_PROP": coach_value_prop,
@@ -131,4 +139,4 @@ if st.button("💾 Sauvegarder les réglages", type="primary"):
         "IMAP_USER": imap_user,
         "IMAP_PASSWORD": imap_password,
     })
-    st.success("✅ Sauvegardé ! Rechargez la page pour appliquer.")
+    st.success("✅ Sauvegardé !")

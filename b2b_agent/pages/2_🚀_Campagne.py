@@ -17,10 +17,14 @@ st.caption("L'IA analyse chaque prospect et écrit un message personnalisé.")
 st.markdown("---")
 
 cfg = load_config()
+from core.auth import check_quota, get_usage
 
-# Vérifications
-if not cfg.mistral_api_key or cfg.mistral_api_key in ("votre-cle-ici", ""):
-    st.error("Vous devez d'abord configurer votre clé API dans **⚙️ Réglages**.")
+client_id = st.session_state.get("client_id", "")
+
+# Vérifier le quota
+if not check_quota(client_id, "messages"):
+    usage = get_usage(client_id)
+    st.error(f"Quota mensuel atteint ({usage['messages']}/{usage['quota_messages']} messages). Contactez l'administrateur.")
     st.stop()
 
 total = get_total_prospects()

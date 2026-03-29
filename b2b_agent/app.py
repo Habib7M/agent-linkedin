@@ -1,7 +1,11 @@
 """Agent IA de Prospection LinkedIn — Accueil + Connexion."""
 
 import streamlit as st
-from core.auth import authenticate, create_client, is_admin, list_clients, delete_client, get_client_display_name, ensure_admin_exists, change_password
+from core.auth import (
+    authenticate, create_client, is_admin, list_clients,
+    delete_client, get_client_display_name, ensure_admin_exists,
+    change_password, update_quota, get_usage,
+)
 from core.db import init_db, get_total_prospects, count_prospects_by_status
 
 # Créer le compte admin au premier lancement
@@ -45,7 +49,7 @@ def show_admin_panel():
     st.markdown("---")
     st.markdown("### 👑 Espace Admin")
 
-    tab1, tab2, tab3 = st.tabs(["Créer un client", "Voir les clients", "Mot de passe"])
+    tab1, tab2, tab3 = st.tabs(["Créer un client", "Clients & Quotas", "Mot de passe"])
 
     with tab1:
         with st.form("create_client_form"):
@@ -67,7 +71,6 @@ def show_admin_panel():
             else:
                 if create_client(new_user, new_pass, new_name):
                     st.success(f"Compte créé pour **{new_name or new_user}** !")
-                    # Initialiser la DB du nouveau client
                     old_client = st.session_state.get("client_id", "")
                     st.session_state["client_id"] = new_user
                     init_db()
@@ -80,15 +83,49 @@ def show_admin_panel():
         if not clients:
             st.info("Aucun client pour le moment.")
         else:
-            st.markdown(f"**{len(clients)} client(s) enregistré(s)**")
+            st.markdown(f"**{len(clients)} compte(s)**")
+            st.markdown("")
+
             for c in clients:
-                col1, col2, col3 = st.columns([3, 3, 1])
-                col1.write(f"**{c['display_name']}**")
-                col2.write(f"`{c['username']}`")
-                if c['username'] != "admin":
-                    if col3.button("🗑", key=f"del_{c['username']}"):
-                        delete_client(c['username'])
-                        st.rerun()
+                if c["username"] == "admin":
+                    continue
+
+                with st.expander(f"**{c['display_name']}** (`{c['username']}`)"):
+                    # Utilisation du mois
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"**Prospects** : {c['used_prospects']} / {c['quota_prospects']}")
+                    with col2:
+                        st.markdown(f"**Messages IA** : {c['used_messages']} / {c['quota_messages']}")
+
+                    # Modifier les quotas
+                    with st.form(f"quota_{c['username']}"):
+                        qcol1, qcol2 = st.columns(2)
+                        with qcol1:
+                            new_qp = st.number_input(
+                                "Quota prospects/mois",
+                                value=c["quota_prospects"],
+                                min_value=0, max_value=10000, step=50,
+                                key=f"qp_{c['username']}",
+                            )
+                        with qcol2:
+                            new_qm = st.number_input(
+                                "Quota messages/mois",
+                                value=c["quota_messages"],
+                                min_value=0, max_value=10000, step=50,
+                                key=f"qm_{c['username']}",
+                            )
+
+                        bcol1, bcol2 = st.columns(2)
+                        with bcol1:
+                            if st.form_submit_button("💾 Modifier le quota"):
+                                update_quota(c["username"], new_qp, new_qm)
+                                st.success("Quota mis à jour !")
+                                st.rerun()
+                        with bcol2:
+                            if st.form_submit_button("🗑 Supprimer le client"):
+                                delete_client(c["username"])
+                                st.rerun()
 
     with tab3:
         with st.form("change_pwd_form"):
@@ -128,7 +165,7 @@ def show_home():
     if total == 0:
         st.markdown("### Comment ça marche ?")
         st.markdown("")
-        st.markdown("**Étape 1** — Allez dans **⚙️ Réglages** et collez votre clé API")
+        st.markdown("**Étape 1** — Allez dans **⚙️ Réglages** pour configurer votre offre")
         st.markdown("**Étape 2** — Allez dans **🔍 Prospects** et trouvez vos futurs clients")
         st.markdown("**Étape 3** — Allez dans **🚀 Campagne** et l'IA écrit les messages pour vous")
         st.markdown("**Étape 4** — Suivez les résultats dans **📊 Suivi**")
