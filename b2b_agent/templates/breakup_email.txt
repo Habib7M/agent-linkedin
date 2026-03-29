@@ -1,0 +1,11 @@
+Sujet: {name}, dernier message
+
+Bonjour {name},
+
+C'est mon dernier message. [Phrase empathique qui montre qu'on comprend que les coachs sont débordés entre leurs séances, leur contenu et leur admin.]
+
+[Phrase de valeur résiduelle : si un jour vous cherchez une solution pour automatiser votre prospection LinkedIn sans sacrifier la personnalisation, je serai là. Mentionner brièvement ce que l'agent apporte à des coachs comme eux.]
+
+Bonne continuation dans votre belle mission d'accompagnement.
+
+Cordialement,

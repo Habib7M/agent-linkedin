@@ -1,0 +1,36 @@
+# Claude
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Data (bases de données clients)
+b2b_agent/data/*.db
+b2b_agent/data/*.db-shm
+b2b_agent/data/*.db-wal
+b2b_agent/data/clients.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
