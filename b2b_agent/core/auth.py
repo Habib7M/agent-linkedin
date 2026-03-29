@@ -98,3 +98,13 @@ def get_client_db_path(username: str) -> Path:
 def is_admin(username: str) -> bool:
     """Vérifie si un utilisateur est l'admin."""
     return username == "admin"
+
+
+def ensure_admin_exists():
+    """Crée le compte admin s'il n'existe pas (premier lancement)."""
+    import os
+    clients = _load_clients()
+    if "admin" not in clients:
+        # Mot de passe par défaut ou depuis variable d'environnement
+        default_pwd = os.environ.get("ADMIN_PASSWORD", "Admin2024!")
+        create_client("admin", default_pwd, "Administrateur")

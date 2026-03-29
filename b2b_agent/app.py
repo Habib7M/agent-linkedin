@@ -1,8 +1,11 @@
 """Agent IA de Prospection LinkedIn — Accueil + Connexion."""
 
 import streamlit as st
-from core.auth import authenticate, create_client, is_admin, list_clients, delete_client, get_client_display_name
+from core.auth import authenticate, create_client, is_admin, list_clients, delete_client, get_client_display_name, ensure_admin_exists
 from core.db import init_db, get_total_prospects, count_prospects_by_status
+
+# Créer le compte admin au premier lancement
+ensure_admin_exists()
 
 st.set_page_config(
     page_title="Agent Prospection LinkedIn",
