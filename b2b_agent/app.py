@@ -1,7 +1,7 @@
 """Agent IA de Prospection LinkedIn — Accueil + Connexion."""
 
 import streamlit as st
-from core.auth import authenticate, create_client, is_admin, list_clients, delete_client, get_client_display_name, ensure_admin_exists
+from core.auth import authenticate, create_client, is_admin, list_clients, delete_client, get_client_display_name, ensure_admin_exists, change_password
 from core.db import init_db, get_total_prospects, count_prospects_by_status
 
 # Créer le compte admin au premier lancement
@@ -45,7 +45,7 @@ def show_admin_panel():
     st.markdown("---")
     st.markdown("### 👑 Espace Admin")
 
-    tab1, tab2 = st.tabs(["Créer un client", "Voir les clients"])
+    tab1, tab2, tab3 = st.tabs(["Créer un client", "Voir les clients", "Mot de passe"])
 
     with tab1:
         with st.form("create_client_form"):
@@ -89,6 +89,27 @@ def show_admin_panel():
                     if col3.button("🗑", key=f"del_{c['username']}"):
                         delete_client(c['username'])
                         st.rerun()
+
+    with tab3:
+        with st.form("change_pwd_form"):
+            old_pwd = st.text_input("Mot de passe actuel", type="password")
+            new_pwd = st.text_input("Nouveau mot de passe", type="password")
+            new_pwd2 = st.text_input("Confirmer le nouveau mot de passe", type="password")
+            change_btn = st.form_submit_button("Changer le mot de passe", type="primary")
+
+        if change_btn:
+            client_id = st.session_state.get("client_id", "")
+            if not old_pwd or not new_pwd:
+                st.error("Remplissez tous les champs.")
+            elif not authenticate(client_id, old_pwd):
+                st.error("Mot de passe actuel incorrect.")
+            elif new_pwd != new_pwd2:
+                st.error("Les nouveaux mots de passe ne correspondent pas.")
+            elif len(new_pwd) < 6:
+                st.error("Le mot de passe doit faire au moins 6 caractères.")
+            else:
+                change_password(client_id, new_pwd)
+                st.success("Mot de passe changé ! ✅")
 
 
 def show_home():

@@ -100,6 +100,16 @@ def is_admin(username: str) -> bool:
     return username == "admin"
 
 
+def change_password(username: str, new_password: str) -> bool:
+    """Change le mot de passe d'un client."""
+    clients = _load_clients()
+    if username in clients:
+        clients[username]["password"] = _hash_password(new_password)
+        _save_clients(clients)
+        return True
+    return False
+
+
 def ensure_admin_exists():
     """Crée le compte admin s'il n'existe pas (premier lancement)."""
     import os
