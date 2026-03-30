@@ -1,11 +1,12 @@
 """Recherche automatique de prospects sur LinkedIn via recherche web.
 
-Utilise Google Search (scraping) puis DuckDuckGo en fallback.
-Fonctionne depuis les serveurs cloud (Streamlit Cloud).
+Utilise des instances SearXNG (moteur de recherche libre) qui agrègent
+Google, Bing, DuckDuckGo, etc. Fonctionne depuis les serveurs cloud.
 """
 
 import re
 import time
+import random
 import httpx
 import structlog
 from typing import Optional
@@ -15,9 +16,22 @@ log = structlog.get_logger()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept": "application/json, text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.5",
 }
+
+# Instances SearXNG publiques avec API JSON activée
+SEARXNG_INSTANCES = [
+    "https://search.sapti.me",
+    "https://searx.tiekoetter.com",
+    "https://search.bus-hit.me",
+    "https://searx.be",
+    "https://search.neet.works",
+    "https://searx.oxf.te.uk",
+    "https://search.ononoki.org",
+    "https://searx.namejeff.xyz",
+    "https://priv.au",
+]
 
 
 def _extract_name_from_title(title: str) -> str:
@@ -52,6 +66,8 @@ def _extract_about_from_snippet(snippet: str) -> str:
     cleaned = re.sub(r"^\d{1,2}\s\w+\s\d{4}\s*[\-–—·]\s*", "", cleaned)
     cleaned = re.sub(r"^Voir le profil de .+ sur LinkedIn.*?\.", "", cleaned)
     cleaned = re.sub(r"^View .+'s profile on LinkedIn.*?\.", "", cleaned)
+    # Nettoyer les tags HTML restants
+    cleaned = re.sub(r"<[^>]+>", "", cleaned)
     return cleaned.strip()
 
 
@@ -88,7 +104,7 @@ def _parse_results(results: list[dict], max_results: int) -> list[dict]:
 
         url = result.get("href", result.get("url", ""))
         title = result.get("title", "")
-        snippet = result.get("body", result.get("snippet", ""))
+        snippet = result.get("body", result.get("snippet", result.get("content", "")))
 
         linkedin_url = _extract_linkedin_url(url)
         if not linkedin_url:
@@ -111,102 +127,62 @@ def _parse_results(results: list[dict], max_results: int) -> list[dict]:
 
 
 # =============================================
-# Méthode 1 : Google Search (scraping HTML)
+# Méthode principale : SearXNG (instances publiques)
 # =============================================
 
-def _search_google(search_query: str, max_results: int) -> list[dict]:
-    """Recherche via Google Search scraping."""
-    results = []
-    num = min(max_results + 10, 40)
-    url = f"https://www.google.com/search?q={quote_plus(search_query)}&num={num}&hl=fr"
+def _search_searxng(search_query: str, max_results: int) -> list[dict]:
+    """Recherche via une instance SearXNG publique (API JSON)."""
+    # Mélanger les instances pour répartir la charge
+    instances = SEARXNG_INSTANCES.copy()
+    random.shuffle(instances)
 
-    resp = httpx.get(url, headers=HEADERS, timeout=15.0, follow_redirects=True)
-    resp.raise_for_status()
-    html = resp.text
+    for instance in instances:
+        try:
+            url = f"{instance}/search"
+            params = {
+                "q": search_query,
+                "format": "json",
+                "language": "fr",
+                "categories": "general",
+                "pageno": 1,
+            }
 
-    # Google met les résultats dans des <div class="g">
-    # Chaque résultat a un <a href="..."> et un <h3>titre</h3>
-    # On extrait avec regex
+            resp = httpx.get(
+                url,
+                params=params,
+                headers=HEADERS,
+                timeout=10.0,
+                follow_redirects=True,
+            )
 
-    # Pattern pour extraire URL + titre depuis les résultats Google
-    # Les liens LinkedIn sont dans des <a href="/url?q=https://...linkedin.com/in/...">
-    link_pattern = re.compile(
-        r'<a\s+[^>]*href="/url\?q=(https?://[^"&]+linkedin\.com/in/[^"&]+)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>',
-        re.DOTALL
-    )
+            if resp.status_code != 200:
+                log.warning("searxng_bad_status", instance=instance, status=resp.status_code)
+                continue
 
-    matches = link_pattern.findall(html)
+            data = resp.json()
+            results = data.get("results", [])
 
-    if not matches:
-        # Fallback : pattern alternatif pour Google
-        alt_pattern = re.compile(
-            r'<a\s+[^>]*href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)"[^>]*>.*?<h3[^>]*>(.*?)</h3>',
-            re.DOTALL
-        )
-        matches = alt_pattern.findall(html)
+            if results:
+                # Convertir au format standard
+                formatted = []
+                for r in results:
+                    formatted.append({
+                        "href": r.get("url", ""),
+                        "title": r.get("title", ""),
+                        "body": r.get("content", ""),
+                    })
+                log.info("searxng_success", instance=instance, count=len(formatted))
+                return formatted
 
-    if not matches:
-        # Pattern encore plus large : chercher tous les liens LinkedIn dans la page
-        url_pattern = re.compile(r'(https?://(?:www\.)?linkedin\.com/in/[\w\-]+)')
-        title_pattern = re.compile(r'<h3[^>]*>(.*?)</h3>', re.DOTALL)
+        except Exception as e:
+            log.warning("searxng_instance_failed", instance=instance, error=str(e))
+            continue
 
-        urls_found = url_pattern.findall(html)
-        titles_found = title_pattern.findall(html)
-
-        for i, u in enumerate(urls_found):
-            title = titles_found[i] if i < len(titles_found) else ""
-            title = re.sub(r'<[^>]+>', '', title).strip()
-            matches.append((u, title))
-
-    for href, title in matches:
-        clean_url = unquote(href.split("&")[0])
-        clean_title = re.sub(r'<[^>]+>', '', title).strip()
-
-        results.append({
-            "href": clean_url,
-            "title": clean_title,
-            "body": "",
-        })
-
-    log.info("google_search_results", count=len(results))
-    return results
+    return []
 
 
 # =============================================
-# Méthode 2 : Bing Search (fallback)
-# =============================================
-
-def _search_bing(search_query: str, max_results: int) -> list[dict]:
-    """Recherche via Bing Search scraping."""
-    results = []
-    url = f"https://www.bing.com/search?q={quote_plus(search_query)}&count={min(max_results + 10, 50)}&setlang=fr"
-
-    resp = httpx.get(url, headers=HEADERS, timeout=15.0, follow_redirects=True)
-    resp.raise_for_status()
-    html = resp.text
-
-    # Bing : <li class="b_algo"><h2><a href="URL">Titre</a></h2><p>snippet</p></li>
-    pattern = re.compile(
-        r'<li\s+class="b_algo"[^>]*>.*?<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)</a>.*?(?:<p[^>]*>(.*?)</p>)?',
-        re.DOTALL
-    )
-
-    for href, title, snippet in pattern.findall(html):
-        clean_title = re.sub(r'<[^>]+>', '', title).strip()
-        clean_snippet = re.sub(r'<[^>]+>', '', snippet).strip() if snippet else ""
-
-        results.append({
-            "href": href,
-            "title": clean_title,
-            "body": clean_snippet,
-        })
-
-    log.info("bing_search_results", count=len(results))
-    return results
-
-
-# =============================================
-# Méthode 3 : DuckDuckGo package (dernier recours)
+# Fallback : DuckDuckGo package
 # =============================================
 
 def _search_ddg_package(search_query: str, max_results: int, region: str) -> list[dict]:
@@ -236,14 +212,13 @@ def search_prospects(
 ) -> list[dict]:
     """Recherche des profils LinkedIn correspondant à la requête.
 
-    Essaie dans l'ordre : Google → Bing → DuckDuckGo package.
+    Essaie dans l'ordre : SearXNG → DuckDuckGo package.
     """
     search_query = f"site:linkedin.com/in {query}"
     log.info("prospect_search_start", query=search_query, max_results=max_results)
 
     methods = [
-        ("google", lambda: _search_google(search_query, max_results)),
-        ("bing", lambda: _search_bing(search_query, max_results)),
+        ("searxng", lambda: _search_searxng(search_query, max_results)),
         ("ddg_package", lambda: _search_ddg_package(search_query, max_results, region)),
     ]
 
@@ -256,9 +231,9 @@ def search_prospects(
                     log.info("prospect_search_done", method=method_name, found=len(prospects))
                     return prospects
                 else:
-                    log.warning("no_linkedin_profiles_in_results", method=method_name, raw_count=len(raw_results))
+                    log.warning("no_linkedin_in_results", method=method_name, raw_count=len(raw_results))
         except Exception as e:
-            log.warning("search_method_failed", method=method_name, error=str(e))
+            log.warning("search_failed", method=method_name, error=str(e))
         time.sleep(0.5)
 
     log.warning("prospect_search_empty", query=search_query)
