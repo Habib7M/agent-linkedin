@@ -1,1 +1,1 @@
-Bonjour {name}, [mention légère d'un élément du profil, en 1 phrase courte et naturelle.] [1 question simple et sincère.]
+Bonjour {name}, [compliment sincère ou point commun, 1 phrase courte.] [Proposer de se connecter / au plaisir d'échanger. Pas de question business.]
