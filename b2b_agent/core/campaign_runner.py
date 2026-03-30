@@ -4,7 +4,7 @@ import random
 from datetime import datetime
 from typing import Optional, Callable
 
-import structlog
+import logging
 
 from .config import load_config
 from .db import (
@@ -18,7 +18,7 @@ from .message_generator import generate_message
 from .email_sender import send_email, RateLimiter
 from .linkedin_preparer import prepare_linkedin_message
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 # 🔧 CUSTOMIZE: séquence de prospection
 SEQUENCE = [
@@ -52,7 +52,7 @@ def run_campaign(
     Returns:
         dict avec les stats de la campagne
     """
-    log.info("campaign_start", min_score=min_score, dry_run=dry_run)
+    log.info(f"campaign_start min_score={min_score} dry_run={dry_run}")
 
     # 1. Scorer tous les prospects
     score_all_prospects()
@@ -117,7 +117,7 @@ def run_campaign(
                     )
                 generate_personalization_brief(prospect)
             except Exception as e:
-                log.warning("brief_generation_failed", prospect=prospect["name"], error=str(e))
+                log.warning(f"brief_generation_failed prospect={prospect['name']} error={e}")
                 # Continue quand même — le message sera moins personnalisé
 
         # Générer le message
@@ -135,7 +135,7 @@ def run_campaign(
                 dry_run=dry_run,
             )
         except Exception as e:
-            log.error("generation_error", prospect=prospect["name"], error=str(e))
+            log.error(f"generation_error prospect={prospect['name']} error={e}")
             stats["failed"] += 1
             continue
 
@@ -195,5 +195,5 @@ def run_campaign(
 
         stats["messages"].append(msg_info)
 
-    log.info("campaign_done", **{k: v for k, v in stats.items() if k != "messages"})
+    log.info(f"campaign_done {' '.join(f'{k}={v}' for k, v in stats.items() if k != 'messages')}")
     return stats

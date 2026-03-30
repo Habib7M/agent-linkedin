@@ -1,9 +1,9 @@
 """Envoi de webhooks asynchrones."""
 
 import httpx
-import structlog
+import logging
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 
 def send_webhook(url: str, payload: dict):
@@ -19,6 +19,6 @@ def send_webhook(url: str, payload: dict):
     try:
         with httpx.Client(timeout=10) as client:
             resp = client.post(url, json=payload)
-            log.info("webhook_sent", url=url, status=resp.status_code)
+            log.info(f"webhook_sent url={url} status={resp.status_code}")
     except Exception as e:
-        log.error("webhook_error", url=url, error=str(e))
+        log.error(f"webhook_error url={url} error={e}")

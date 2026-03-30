@@ -8,12 +8,12 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Optional
 
-import structlog
+import logging
 
 from .config import load_config
 from .models import SendResult
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 
 class RateLimiter:
@@ -31,7 +31,7 @@ class RateLimiter:
         if len(self.sent_timestamps) >= self.max_per_hour:
             wait_time = 3600 - (now - self.sent_timestamps[0])
             if wait_time > 0:
-                log.info("rate_limit_wait", seconds=round(wait_time))
+                log.info(f"rate_limit_wait seconds={round(wait_time)}")
                 time.sleep(wait_time)
         # Jitter 2-10s entre chaque envoi
         jitter = random.uniform(2, 10)
@@ -96,7 +96,7 @@ def send_email(
                 server.login(cfg.smtp_user, cfg.smtp_password)
                 server.send_message(msg)
 
-            log.info("email_sent", to=to_email, subject=subject, step=step)
+            log.info(f"email_sent to={to_email} subject={subject} step={step}")
             return SendResult(
                 prospect_id=prospect_id,
                 channel="email",
@@ -108,7 +108,7 @@ def send_email(
             )
 
         except smtplib.SMTPRecipientsRefused:
-            log.warning("email_bounced", to=to_email)
+            log.warning(f"email_bounced to={to_email}")
             return SendResult(
                 prospect_id=prospect_id,
                 channel="email",
@@ -122,7 +122,7 @@ def send_email(
 
         except Exception as e:
             wait = (2 ** attempt) + random.uniform(0, 1)
-            log.warning("email_retry", attempt=attempt + 1, error=str(e), wait=wait)
+            log.warning(f"email_retry attempt={attempt + 1} error={e} wait={wait}")
             if attempt < max_retries - 1:
                 time.sleep(wait)
             else:

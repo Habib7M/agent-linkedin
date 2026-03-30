@@ -48,11 +48,11 @@ if search_clicked:
                 st.session_state["search_results"] = results
                 st.success(f"✅ {len(results)} profils trouvés !")
             else:
-                st.warning("Aucun résultat trouvé. Essayez avec des mots-clés plus précis (ex: 'coach de vie Paris', 'coach parental Lyon').")
+                st.warning("Aucun résultat. Essayez des mots-clés différents ou réessayez dans 30 secondes.")
                 st.session_state["search_results"] = []
         except Exception as e:
-            st.error(f"Erreur lors de la recherche : {str(e)}")
-            st.info("💡 Astuce : essayez avec des mots-clés différents ou réessayez dans quelques instants.")
+            st.error(f"Erreur : {str(e)}")
+            st.info("💡 Réessayez dans quelques secondes — les moteurs de recherche limitent parfois les requêtes.")
 
 # Résultats
 if st.session_state.get("search_results"):

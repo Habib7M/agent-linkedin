@@ -5,11 +5,11 @@ import io
 from datetime import datetime
 from typing import Optional
 
-import structlog
+import logging
 
 from .models import SendResult
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 
 def prepare_linkedin_message(
@@ -29,12 +29,7 @@ def prepare_linkedin_message(
     Returns:
         SendResult avec status "ready_to_send"
     """
-    log.info(
-        "linkedin_prepared",
-        prospect=prospect["name"],
-        step=step,
-        length=len(message_body),
-    )
+    log.info(f"linkedin_prepared prospect={prospect['name']} step={step} length={len(message_body)}")
 
     return SendResult(
         prospect_id=prospect["id"],

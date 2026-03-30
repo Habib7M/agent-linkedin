@@ -7,7 +7,7 @@ from email.header import decode_header
 from datetime import datetime, timedelta
 from typing import Optional
 
-import structlog
+import logging
 
 from .config import load_config
 from .db import (
@@ -20,7 +20,7 @@ from .db import (
 from .webhook import send_webhook
 from .reply_generator import generate_aca_reply
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 
 def _decode_subject(subject_raw) -> str:
@@ -103,7 +103,7 @@ def check_replies(since_hours: int = 1, auto_draft: bool = True) -> list[dict]:
             # Matcher avec un prospect
             prospect = get_prospect_by_email(from_addr)
             if prospect:
-                log.info("reply_detected", from_email=from_addr, subject=subject)
+                log.info(f"reply_detected from_email={from_addr} subject={subject}")
 
                 # Mettre à jour le statut du prospect
                 update_prospect_status(prospect["id"], "replied")
@@ -143,7 +143,7 @@ def check_replies(since_hours: int = 1, auto_draft: bool = True) -> list[dict]:
                         save_draft_response(reply_id, draft_text)
                         reply_info["draft"] = draft_result
                     except Exception as e:
-                        log.warning("aca_draft_failed", error=str(e))
+                        log.warning(f"aca_draft_failed error={e}")
 
                 replies.append(reply_info)
 
@@ -160,7 +160,7 @@ def check_replies(since_hours: int = 1, auto_draft: bool = True) -> list[dict]:
         mail.logout()
 
     except Exception as e:
-        log.error("imap_error", error=str(e))
+        log.error(f"imap_error error={e}")
 
     return replies
 
@@ -201,11 +201,11 @@ def check_bounces() -> list[dict]:
                         "email": addr,
                         "detected_at": datetime.now().isoformat(),
                     })
-                    log.info("bounce_detected", email=addr)
+                    log.info(f"bounce_detected email={addr}")
 
         mail.logout()
 
     except Exception as e:
-        log.error("imap_bounce_error", error=str(e))
+        log.error(f"imap_bounce_error error={e}")
 
     return bounces

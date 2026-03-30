@@ -7,12 +7,12 @@ extraire un maximum d'infos de chaque profil LinkedIn.
 
 import re
 import time
+import logging
 import httpx
-import structlog
 from typing import Optional
 from urllib.parse import quote_plus, unquote
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -135,12 +135,62 @@ def _brave_get(params: dict, max_retries: int = 3) -> str:
         )
         if resp.status_code == 429:
             wait = 2 ** attempt
-            log.warning("brave_rate_limit", attempt=attempt + 1, wait=wait)
+            log.warning(f"Brave rate limit, tentative {attempt + 1}, attente {wait}s")
             time.sleep(wait)
             continue
         resp.raise_for_status()
         return resp.text
     raise Exception("Brave Search temporairement indisponible. Réessayez dans 1 minute.")
+
+
+def _parse_brave_html(html: str) -> list[tuple]:
+    """Parse le HTML Brave avec plusieurs stratégies (au cas où la structure change)."""
+
+    # Stratégie 1 : parsing structuré complet (data-pos + title + content)
+    pattern1 = re.compile(
+        r'data-pos="(\d+)".*?'
+        r'href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)".*?'
+        r'class="title search-snippet-title[^"]*"[^>]*>(.*?)</(?:span|div)>.*?'
+        r'class="content desktop-default-regular[^"]*"[^>]*>(.*?)</(?:div|p)>',
+        re.DOTALL
+    )
+    matches = pattern1.findall(html)
+    if matches:
+        log.info(f"Brave parsing stratégie 1: {len(matches)} résultats")
+        return matches
+
+    # Stratégie 2 : chercher les liens LinkedIn + texte autour
+    pattern2 = re.compile(
+        r'href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)"[^>]*>.*?'
+        r'class="[^"]*snippet-title[^"]*"[^>]*>(.*?)</.*?'
+        r'class="[^"]*(?:content|description)[^"]*"[^>]*>(.*?)</(?:div|p)>',
+        re.DOTALL
+    )
+    matches2 = pattern2.findall(html)
+    if matches2:
+        log.info(f"Brave parsing stratégie 2: {len(matches2)} résultats")
+        return [("0", url, title, desc) for url, title, desc in matches2]
+
+    # Stratégie 3 : fallback simple — juste les URLs LinkedIn + titre de la page
+    urls = list(set(re.findall(
+        r'href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)"', html
+    )))
+    if urls:
+        log.info(f"Brave parsing stratégie 3 (fallback): {len(urls)} URLs")
+        results = []
+        for url in urls:
+            # Chercher le titre le plus proche du lien
+            escaped = re.escape(url)
+            ctx_match = re.search(
+                rf'{escaped}.*?class="[^"]*title[^"]*"[^>]*>(.*?)</(?:span|div|a)>',
+                html, re.DOTALL
+            )
+            title = re.sub(r"<[^>]+>", "", ctx_match.group(1)).strip() if ctx_match else ""
+            results.append(("0", url, title, ""))
+        return results
+
+    log.warning(f"Brave parsing: aucun résultat. HTML length={len(html)}")
+    return []
 
 
 def _search_brave(query: str, max_results: int) -> list[dict]:
@@ -151,17 +201,7 @@ def _search_brave(query: str, max_results: int) -> list[dict]:
     search_query = f"site:linkedin.com/in {query}"
     html = _brave_get({"q": search_query, "source": "web"})
 
-    # Parser avec le format Brave : data-pos, href, title, content
-    result_pattern = re.compile(
-        r'data-pos="(\d+)".*?'
-        r'href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)".*?'
-        r'class="title search-snippet-title[^"]*"[^>]*>(.*?)</(?:span|div)>.*?'
-        r'class="content desktop-default-regular[^"]*"[^>]*>(.*?)</(?:div|p)>',
-        re.DOTALL
-    )
-
-    matches = result_pattern.findall(html)
-    log.info("brave_raw_results", count=len(matches))
+    matches = _parse_brave_html(html)
 
     prospects = []
     seen_urls = set()

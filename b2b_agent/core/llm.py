@@ -7,11 +7,11 @@ Utilise httpx au lieu du SDK mistralai pour éviter les problèmes d'installatio
 """
 
 import time
+import logging
 import httpx
-import structlog
 from .config import load_config
 
-log = structlog.get_logger()
+log = logging.getLogger(__name__)
 
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
 
@@ -88,7 +88,7 @@ def appeler_ia(system_prompt: str, user_prompt: str, temperature: float = 0.7, m
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                log.warning("ia_retry", model=model, attempt=attempt + 1, status=status)
+                log.warning(f"IA retry model={model} attempt={attempt + 1} status={status}")
 
                 if status in (429, 500, 502, 503):
                     time.sleep(2 ** attempt)
@@ -97,7 +97,7 @@ def appeler_ia(system_prompt: str, user_prompt: str, temperature: float = 0.7, m
                     break
 
             except Exception as e:
-                log.warning("ia_retry", model=model, attempt=attempt + 1, error=str(e))
+                log.warning(f"IA retry model={model} attempt={attempt + 1} error={e}")
                 time.sleep(2 ** attempt)
                 continue
 
@@ -120,5 +120,5 @@ def appeler_ia_conversation(system_prompt: str, messages: list, temperature: flo
     try:
         return _call_mistral(cfg.mistral_api_key, cfg.mistral_model, full_messages, temperature, max_tokens)
     except Exception as e:
-        log.warning("ia_conversation_error", error=str(e))
+        log.warning(f"IA conversation error: {e}")
         raise Exception("L'IA n'a pas pu générer de réponse.")
