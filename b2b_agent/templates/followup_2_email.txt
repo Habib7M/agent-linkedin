@@ -1,9 +1,9 @@
-Sujet: [Élément de valeur : résultat client, conseil acquisition, ou insight marché du coaching]
+Sujet: [élément de valeur : résultat client, conseil concret, ou insight marché]
 
 Bonjour {name},
 
-[Message court — 2-3 phrases max. Apporter un élément de valeur concret : résultat d'un coach qui utilise l'agent (nombre de RDV, gain de temps), ou un conseil actionnable sur la prospection LinkedIn pour les coachs.]
+[2-3 phrases max. Apporter un élément de valeur concret : un résultat obtenu par un client similaire, ou un conseil actionnable lié à leur activité.]
 
-[CTA léger : "est-ce que ça correspond à ce que vous cherchez pour développer votre activité de coaching ?" ou question similaire liée à leur contexte.]
+[CTA léger : question simple liée à leur contexte.]
 
 Bien à vous,

@@ -1,1 +1,1 @@
-{name}, merci pour la connexion ! [Référence à un élément nouveau du profil non utilisé dans le premier message — post récent sur le coaching, témoignage client, ou actualité de leur niche.] [Question ouverte courte sur leur stratégie d'acquisition client ou proposition d'échange.]
+{name}, [référence à un élément nouveau du profil non utilisé dans le premier message.] [1 question ouverte courte ou proposition d'échange.]

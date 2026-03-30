@@ -68,35 +68,35 @@ def generate_personalization_brief(prospect: dict, force: bool = False) -> str:
 
     system_prompt = (
         "Tu es un expert en prospection B2B et en psychologie professionnelle. "
-        "Tu analyses des profils de prospects pour identifier les meilleurs angles "
-        "d'approche personnalisée. Tu es direct, concret, jamais générique."
+        "Tu analyses des profils pour trouver LE bon angle d'approche. "
+        "Tu es concret et spécifique — jamais de phrases passe-partout."
     )
 
-    user_prompt = f"""Analyse ce profil de prospect et produis un BRIEF DE PERSONNALISATION structuré.
+    user_prompt = f"""Analyse ce profil et produis un BRIEF DE PERSONNALISATION pour rédiger un message de prospection.
 
 --- PROFIL DU PROSPECT ---
 {profile_context}
 --- FIN PROFIL ---
 
---- CONTEXTE DU COACH (celui qui prospecte) ---
+--- CONTEXTE (celui qui prospecte) ---
 Produit : {cfg.coach_product}
 Client idéal : {cfg.coach_icp}
 Proposition de valeur : {cfg.coach_value_prop}
 --- FIN CONTEXTE ---
 
-Produis un brief structuré avec EXACTEMENT ces 5 sections :
+Produis un brief avec EXACTEMENT ces 5 sections. Sois SPÉCIFIQUE à ce profil — pas de phrases génériques.
 
-ACCROCHE_PROFIL: Une phrase d'ouverture naturelle qui montre qu'on a regardé le profil.
+ACCROCHE_PROFIL: Un fait CONCRET tiré du profil (headline, poste, parcours, compétence) qui peut servir d'ouverture. PAS "j'ai vu votre profil". Cite le fait précis.
 
-PONT_PERTINENCE: Le lien logique entre la situation du prospect et l'offre.
+PONT_PERTINENCE: Le lien LOGIQUE entre la situation de cette personne et l'offre. Explique POURQUOI cette offre a du sens pour ELLE spécifiquement.
 
-SIGNAL_EXPLOITABLE: L'élément déclencheur le plus fort et comment l'utiliser.
+SIGNAL_EXPLOITABLE: L'élément le plus fort du profil (changement de poste, nouveau rôle, croissance, spécialisation) et comment l'intégrer dans le message. Si aucun signal fort : dire "Aucun signal fort — utiliser le rôle et le secteur".
 
-POINT_DOULEUR_PROBABLE: Le défi ou frustration le plus probable vu le profil.
+POINT_DOULEUR_PROBABLE: Le défi ou la frustration la plus probable VU le profil et le poste. Être réaliste, pas inventer.
 
-TON_RECOMMANDÉ: Le registre à adopter et pourquoi.
+TON_RECOMMANDÉ: Le registre (formel/décontracté, pair-à-pair/expert) et POURQUOI ce ton convient à ce profil.
 
-IMPORTANT : Écris en français. Sois concret et spécifique. Chaque section = 1-3 phrases max.
+Écris en français. Chaque section = 1-2 phrases max, concrètes.
 """
 
     brief = appeler_ia(system_prompt, user_prompt, temperature=0.6, max_tokens=600)

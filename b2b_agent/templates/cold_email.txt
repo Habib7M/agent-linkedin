@@ -1,11 +1,11 @@
-Sujet: {name}, [référence spécifique au profil ou signal lié à leur activité de coaching]
+Sujet: {name}, [élément personnalisé tiré du profil — leur spécialité, un accomplissement, ou un sujet qui les concerne]
 
-[Accroche personnalisée : 1 phrase qui montre qu'on a lu le profil — référencer leur spécialité de coaching, un post récent, ou leur parcours. PAS "j'ai vu votre profil".]
+[1 phrase d'accroche qui montre qu'on connaît leur activité. Référencer un fait concret : leur poste, spécialité, parcours ou contenu récent.]
 
-[Pont de pertinence : 1-2 phrases qui relient la réalité du prospect (coach qui doit trouver des clients tout en accompagnant ses coachés) au problème de la prospection chronophage sur LinkedIn.]
+[1-2 phrases de pont : relier leur réalité quotidienne au problème que résout l'offre du coach. Utiliser les infos du brief.]
 
-J'ai développé un agent IA qui prospecte sur LinkedIn à la place des coachs : {value_prop}. [Adapter cette phrase au contexte spécifique du prospect — sa niche de coaching, sa taille de clientèle probable, son niveau de maturité digitale.]
+[1 phrase qui présente l'offre naturellement, adaptée au contexte du prospect. Utiliser {value_prop} comme base mais reformuler pour ce prospect.]
 
-[CTA : question ouverte liée à leur acquisition client, OU proposition d'une démo de 15 min. Doit être naturel, pas forcé.]
+[CTA : 1 question ouverte ou proposition d'échange de 15 min. Doit être naturel.]
 
 Bien à vous,

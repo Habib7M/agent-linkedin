@@ -26,29 +26,42 @@ def _load_template(channel: str, step: str, variant: str = "a") -> str:
 
 def _build_system_prompt(cfg) -> str:
     """Construit le system prompt avec le contexte métier de la coach."""
-    return f"""Tu es un rédacteur expert en prospection B2B personnalisée pour un coach professionnel.
+    return f"""Tu es un copywriter expert en prospection B2B pour des indépendants et coachs.
 
-CONTEXTE DU COACH :
+CONTEXTE DE CELUI QUI PROSPECTE :
 - Produit/Service : {cfg.coach_product}
 - Client idéal : {cfg.coach_icp}
 - Proposition de valeur : {cfg.coach_value_prop}
 
-TON OBJECTIF : écrire un message qui donne au prospect l'impression qu'on l'a vraiment compris — pas un message template avec son nom collé dessus.
+TON OBJECTIF : écrire un message court, humain et personnalisé. Le prospect doit sentir que ce message a été écrit POUR LUI — pas un copier-coller avec son prénom.
 
-PRINCIPES DE PERSONNALISATION :
-1. L'OUVERTURE doit référencer un élément concret du profil (headline, parcours, activité récente, compétence). Jamais "j'ai vu votre profil".
-2. Le PONT doit être logique : pourquoi cette offre fait sens pour CETTE personne dans SA situation.
-3. Le SIGNAL doit être exploité naturellement — pas "j'ai vu que vous avez été promu" mais tisser cette info dans le fil du message.
-4. Le CTA doit être une question ouverte ou une proposition d'échange, jamais une vente directe.
+COMMENT ÉCRIRE UN BON MESSAGE :
+1. OUVERTURE — Cite un fait précis du profil (headline, poste, parcours, post récent). Pas "j'ai vu votre profil".
+2. PONT — Fais un lien logique entre sa situation et l'offre. Ce lien doit être ÉVIDENT, pas tiré par les cheveux.
+3. CTA — Pose UNE question ouverte ou propose UN échange court. Jamais de vente frontale.
 
-RÈGLES STRICTES :
-- Ton empathique, pair-à-pair, orienté transformation. PAS commercial agressif.
-- INTERDICTION absolue : "j'espère que vous allez bien", "je me permets de", "suite à", "n'hésitez pas", "j'ai vu votre profil", "je me suis permis de regarder"
-- Email : < 150 mots, sujet inclus sur la première ligne au format "Sujet: ..."
-- LinkedIn : < 300 caractères, pas de sujet
-- Tutoiement interdit sauf indication contraire
-- Pas de bullet points dans le corps du message
-- Le message doit sembler écrit par un humain qui a pris 5 minutes pour comprendre le prospect
+EXEMPLES DE BON vs MAUVAIS :
+
+✅ BON (LinkedIn) :
+"Votre approche du coaching orienté résultats pour les dirigeants m'a interpellé — peu de coachs osent mettre des KPIs sur leur accompagnement. Comment gérez-vous l'acquisition de nouveaux clients en parallèle de vos missions ?"
+
+❌ MAUVAIS (LinkedIn) :
+"Bonjour Marie, j'ai vu votre profil et je pense que notre solution pourrait vous intéresser. N'hésitez pas à me contacter pour en discuter."
+
+✅ BON (Email — sujet) :
+"Sujet: Votre méthode coaching + neurosciences — une idée"
+
+❌ MAUVAIS (Email — sujet) :
+"Sujet: Proposition de collaboration"
+
+RÈGLES :
+- Ton naturel, empathique, pair-à-pair. PAS commercial. PAS servile.
+- Email : < 120 mots, sujet personnalisé sur la première ligne "Sujet: ..."
+- LinkedIn : < 280 caractères, pas de sujet, pas de formule de politesse
+- Vouvoiement par défaut
+- Pas de bullet points, pas de gras, pas d'émojis
+- Écrire comme un humain qui envoie un vrai message, pas comme un robot
+- JAMAIS ces phrases : "j'espère que vous allez bien", "je me permets de", "suite à", "n'hésitez pas", "j'ai vu votre profil", "je me suis permis de regarder", "je serais ravi de", "dans le cadre de", "solutions adaptées à vos besoins", "synergie", "optimiser", "je vous contacte car", "permettez-moi de me présenter"
 """
 
 
@@ -98,12 +111,14 @@ Ton recommandé : {ton or 'Pair-à-pair, professionnel'}
 INSTRUCTION ÉTAPE : {step_instructions.get(step, '')}
 
 CONSIGNES :
+- Écris le message FINAL directement, prêt à envoyer. Pas de crochets, pas d'instructions.
 - Utilise le brief comme guide mais formule avec tes propres mots
-- L'accroche doit être SPÉCIFIQUE à ce prospect (pas "j'ai vu votre profil LinkedIn")
-- Le lien avec l'offre du coach doit être NATUREL, pas forcé
-- {"Le message DOIT commencer par 'Sujet: ...' avec un objet personnalisé." if channel == "email" else "Pas de sujet, message < 300 caractères."}
+- L'accroche doit être SPÉCIFIQUE à ce prospect
+- Le lien avec l'offre doit être NATUREL, pas forcé
+- {"Le message DOIT commencer par 'Sujet: ...' avec un objet court et personnalisé. Corps < 120 mots." if channel == "email" else "Pas de sujet. Message COMPLET < 280 caractères. Pas de 'Bien à vous' ni formule de politesse."}
 - Si le brief mentionne un signal fort, intègre-le naturellement
 - Adapte le registre au ton recommandé
+- NE PAS inclure de signature, ni [Votre nom], ni [Prénom]
 """
 
 
@@ -116,11 +131,11 @@ def _validate_message(text: str, channel: str, prospect: dict) -> list[str]:
         if not lines[0].lower().startswith("sujet:"):
             issues.append("Pas de ligne 'Sujet:' en début de message email")
         body = "\n".join(lines[1:]) if len(lines) > 1 else ""
-        if len(body.split()) > 160:
-            issues.append(f"Email trop long ({len(body.split())} mots, max 150)")
+        if len(body.split()) > 140:
+            issues.append(f"Email trop long ({len(body.split())} mots, max 120)")
     elif channel == "linkedin":
         if len(text) > 300:
-            issues.append(f"LinkedIn trop long ({len(text)} chars, max 300)")
+            issues.append(f"LinkedIn trop long ({len(text)} chars, max 280)")
 
     # Vérifier mentions spécifiques au prospect
     name = prospect.get("name", "")
@@ -132,10 +147,26 @@ def _validate_message(text: str, channel: str, prospect: dict) -> list[str]:
     if "{" in text and "}" in text:
         issues.append("Placeholders non résolus détectés")
 
-    # Phrases interdites
+    # Phrases interdites (spam B2B classique)
     banned = [
-        "j'espère que vous allez bien", "je me permets", "n'hésitez pas",
-        "j'ai vu votre profil", "je me suis permis de regarder",
+        "j'espère que vous allez bien",
+        "je me permets",
+        "n'hésitez pas",
+        "j'ai vu votre profil",
+        "je me suis permis de regarder",
+        "je serais ravi",
+        "je serais ravie",
+        "dans le cadre de",
+        "solutions adaptées",
+        "permettez-moi de me présenter",
+        "je vous contacte car",
+        "je me présente",
+        "synergie",
+        "optimiser votre",
+        "booster votre",
+        "proposition de collaboration",
+        "opportunité unique",
+        "à votre disposition",
     ]
     for phrase in banned:
         if phrase in text.lower():
