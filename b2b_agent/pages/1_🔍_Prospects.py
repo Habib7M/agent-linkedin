@@ -41,17 +41,18 @@ with col2:
     search_clicked = st.button("🔍 Chercher", type="primary", disabled=not query)
 
 if search_clicked:
-    with st.spinner("Recherche en cours..."):
+    with st.spinner("Recherche en cours sur LinkedIn..."):
         try:
             results = search_prospects(query, max_results=max_results)
             if results:
                 st.session_state["search_results"] = results
                 st.success(f"✅ {len(results)} profils trouvés !")
             else:
-                st.warning("Aucun résultat. Essayez d'autres mots-clés.")
+                st.warning("Aucun résultat trouvé. Essayez avec des mots-clés plus précis (ex: 'coach de vie Paris', 'coach parental Lyon').")
                 st.session_state["search_results"] = []
         except Exception as e:
-            st.error(f"Erreur : {str(e)}")
+            st.error(f"Erreur lors de la recherche : {str(e)}")
+            st.info("💡 Astuce : essayez avec des mots-clés différents ou réessayez dans quelques instants.")
 
 # Résultats
 if st.session_state.get("search_results"):

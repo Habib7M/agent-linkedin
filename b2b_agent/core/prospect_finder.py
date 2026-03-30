@@ -3,41 +3,31 @@
 Utilise DuckDuckGo pour trouver des profils LinkedIn correspondant
 aux critères de recherche (ex: "coach de vie Paris").
 
-Aucune clé API nécessaire — fonctionne immédiatement.
+Fallback sur recherche HTTP directe si le package DDG ne fonctionne pas.
 """
 
 import re
 import time
+import httpx
 import structlog
 from typing import Optional
-from duckduckgo_search import DDGS
+from urllib.parse import quote_plus
 
 log = structlog.get_logger()
 
 
 def _extract_name_from_title(title: str) -> str:
-    """Extrait le nom depuis le titre Google/DDG d'un profil LinkedIn.
-
-    Format typique : "Prénom Nom - Titre | LinkedIn"
-    """
-    # Retirer " | LinkedIn", " - LinkedIn", etc.
+    """Extrait le nom depuis le titre d'un profil LinkedIn."""
     cleaned = re.sub(r"\s*[\|\-–—]\s*LinkedIn.*$", "", title, flags=re.IGNORECASE)
-    # Retirer le titre après le tiret : "Prénom Nom - Coach de vie" → "Prénom Nom"
     parts = re.split(r"\s*[\-–—]\s*", cleaned, maxsplit=1)
     name = parts[0].strip()
-    # Nettoyer les caractères spéciaux
     name = re.sub(r"[^\w\s\-éèêëàâäùûüôöîïçÉÈÊËÀÂÄÙÛÜÔÖÎÏÇ']", "", name)
     return name.strip()
 
 
 def _extract_headline_from_title(title: str) -> str:
-    """Extrait le headline depuis le titre d'un résultat LinkedIn.
-
-    Format typique : "Prénom Nom - Coach de vie certifiée | LinkedIn"
-    """
-    # Retirer " | LinkedIn" à la fin
+    """Extrait le headline depuis le titre d'un résultat LinkedIn."""
     cleaned = re.sub(r"\s*[\|]\s*LinkedIn.*$", "", title, flags=re.IGNORECASE)
-    # Prendre après le premier tiret
     parts = re.split(r"\s*[\-–—]\s*", cleaned, maxsplit=1)
     if len(parts) > 1:
         return parts[1].strip()
@@ -46,7 +36,6 @@ def _extract_headline_from_title(title: str) -> str:
 
 def _extract_linkedin_url(url: str) -> Optional[str]:
     """Extrait et normalise l'URL LinkedIn d'un profil."""
-    # Chercher le pattern linkedin.com/in/...
     match = re.search(r"(https?://(?:www\.)?linkedin\.com/in/[\w\-]+)", url)
     if match:
         return match.group(1)
@@ -54,15 +43,135 @@ def _extract_linkedin_url(url: str) -> Optional[str]:
 
 
 def _extract_about_from_snippet(snippet: str) -> str:
-    """Extrait un résumé du 'about' depuis le snippet de recherche."""
-    # Nettoyer les formats courants
+    """Extrait un résumé depuis le snippet de recherche."""
     cleaned = snippet.strip()
-    # Retirer les dates et préfixes inutiles
     cleaned = re.sub(r"^\d{1,2}\s\w+\s\d{4}\s*[\-–—·]\s*", "", cleaned)
-    # Retirer "Voir le profil de..." patterns
     cleaned = re.sub(r"^Voir le profil de .+ sur LinkedIn.*?\.", "", cleaned)
     cleaned = re.sub(r"^View .+'s profile on LinkedIn.*?\.", "", cleaned)
     return cleaned.strip()
+
+
+def _parse_results(results: list[dict], max_results: int) -> list[dict]:
+    """Parse les résultats bruts en prospects structurés."""
+    prospects = []
+    seen_urls = set()
+
+    for result in results:
+        if len(prospects) >= max_results:
+            break
+
+        url = result.get("href", result.get("url", ""))
+        title = result.get("title", "")
+        snippet = result.get("body", result.get("snippet", ""))
+
+        linkedin_url = _extract_linkedin_url(url)
+        if not linkedin_url:
+            continue
+
+        if linkedin_url in seen_urls:
+            continue
+        seen_urls.add(linkedin_url)
+
+        name = _extract_name_from_title(title)
+        headline = _extract_headline_from_title(title)
+        about = _extract_about_from_snippet(snippet)
+
+        if not name or len(name) < 3:
+            continue
+
+        prospect = {
+            "name": name,
+            "company": "",
+            "email": "",
+            "linkedin_url": linkedin_url,
+            "role": headline,
+            "industry": "",
+            "custom_signal": "",
+            "linkedin_headline": headline,
+            "linkedin_about": about,
+            "recent_activity": "",
+            "skills": "",
+            "experience_summary": "",
+            "pain_points": "",
+            "mutual_context": "",
+            "tone_preference": "",
+            "source": "recherche_auto",
+        }
+        prospects.append(prospect)
+
+    return prospects
+
+
+def _search_ddg_package(search_query: str, max_results: int, region: str) -> list[dict]:
+    """Recherche via le package duckduckgo-search."""
+    from duckduckgo_search import DDGS
+
+    ddgs = DDGS()
+    results = list(ddgs.text(
+        search_query,
+        region=region,
+        max_results=max_results + 10,
+    ))
+    return results
+
+
+def _search_ddg_http(search_query: str, max_results: int) -> list[dict]:
+    """Recherche via l'API DuckDuckGo HTML directement (fallback)."""
+    results = []
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+
+    # Utiliser DuckDuckGo HTML
+    url = f"https://html.duckduckgo.com/html/?q={quote_plus(search_query)}"
+
+    try:
+        resp = httpx.get(url, headers=headers, timeout=15.0, follow_redirects=True)
+        resp.raise_for_status()
+        html = resp.text
+
+        # Parser les résultats avec regex
+        # Format DDG HTML: <a class="result__a" href="...">titre</a>
+        # et <a class="result__snippet">snippet</a>
+
+        # Extraire les liens et titres
+        link_pattern = re.compile(
+            r'<a\s+[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+            re.DOTALL
+        )
+        snippet_pattern = re.compile(
+            r'<a\s+[^>]*class="result__snippet"[^>]*>(.*?)</a>',
+            re.DOTALL
+        )
+
+        links = link_pattern.findall(html)
+        snippets = snippet_pattern.findall(html)
+
+        for i, (href, title) in enumerate(links):
+            # Nettoyer le HTML des titres
+            clean_title = re.sub(r'<[^>]+>', '', title).strip()
+            clean_snippet = ""
+            if i < len(snippets):
+                clean_snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+
+            # DDG encode les URLs, extraire le vrai lien
+            real_url = href
+            uddg_match = re.search(r'uddg=([^&]+)', href)
+            if uddg_match:
+                from urllib.parse import unquote
+                real_url = unquote(uddg_match.group(1))
+
+            results.append({
+                "href": real_url,
+                "title": clean_title,
+                "body": clean_snippet,
+            })
+
+    except Exception as e:
+        log.error("ddg_http_error", error=str(e))
+
+    return results
 
 
 def search_prospects(
@@ -72,84 +181,35 @@ def search_prospects(
 ) -> list[dict]:
     """Recherche des profils LinkedIn correspondant à la requête.
 
-    Args:
-        query: recherche libre (ex: "coach de vie Paris", "coach parental Lyon")
-        max_results: nombre max de résultats (défaut 20)
-        region: région de recherche (défaut: France)
-
-    Returns:
-        Liste de dicts avec: name, linkedin_url, linkedin_headline, linkedin_about, source
+    Essaie d'abord le package duckduckgo-search, puis fallback sur HTTP direct.
     """
-    # Construire la requête LinkedIn
     search_query = f"site:linkedin.com/in {query}"
-
     log.info("prospect_search_start", query=search_query, max_results=max_results)
 
-    prospects = []
-    seen_urls = set()
-
+    # Méthode 1 : package duckduckgo-search
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(
-                search_query,
-                region=region,
-                max_results=max_results + 10,  # marge pour les doublons/non-pertinents
-            ))
-
-        for result in results:
-            if len(prospects) >= max_results:
-                break
-
-            url = result.get("href", "")
-            title = result.get("title", "")
-            snippet = result.get("body", "")
-
-            # Filtrer : garder uniquement les profils LinkedIn /in/
-            linkedin_url = _extract_linkedin_url(url)
-            if not linkedin_url:
-                continue
-
-            # Éviter les doublons
-            if linkedin_url in seen_urls:
-                continue
-            seen_urls.add(linkedin_url)
-
-            # Extraire les infos
-            name = _extract_name_from_title(title)
-            headline = _extract_headline_from_title(title)
-            about = _extract_about_from_snippet(snippet)
-
-            # Ignorer les résultats sans nom exploitable
-            if not name or len(name) < 3:
-                continue
-
-            prospect = {
-                "name": name,
-                "company": "",  # Non disponible dans les résultats de recherche
-                "email": "",
-                "linkedin_url": linkedin_url,
-                "role": headline,  # Le headline sert de rôle
-                "industry": "",
-                "custom_signal": "",
-                "linkedin_headline": headline,
-                "linkedin_about": about,
-                "recent_activity": "",
-                "skills": "",
-                "experience_summary": "",
-                "pain_points": "",
-                "mutual_context": "",
-                "tone_preference": "",
-                "source": "recherche_auto",
-            }
-            prospects.append(prospect)
-
-        log.info("prospect_search_done", found=len(prospects))
-
+        raw_results = _search_ddg_package(search_query, max_results, region)
+        if raw_results:
+            prospects = _parse_results(raw_results, max_results)
+            if prospects:
+                log.info("prospect_search_done", method="ddg_package", found=len(prospects))
+                return prospects
     except Exception as e:
-        log.error("prospect_search_error", error=str(e))
-        raise
+        log.warning("ddg_package_failed", error=str(e))
 
-    return prospects
+    # Méthode 2 : HTTP direct (fallback)
+    try:
+        raw_results = _search_ddg_http(search_query, max_results)
+        if raw_results:
+            prospects = _parse_results(raw_results, max_results)
+            if prospects:
+                log.info("prospect_search_done", method="ddg_http", found=len(prospects))
+                return prospects
+    except Exception as e:
+        log.warning("ddg_http_failed", error=str(e))
+
+    log.warning("prospect_search_empty", query=search_query)
+    return []
 
 
 def search_multiple_queries(
@@ -157,16 +217,7 @@ def search_multiple_queries(
     max_per_query: int = 10,
     region: str = "fr-fr",
 ) -> list[dict]:
-    """Lance plusieurs recherches et combine les résultats sans doublons.
-
-    Args:
-        queries: liste de requêtes (ex: ["coach de vie Paris", "coach de vie Lyon"])
-        max_per_query: nombre max par requête
-        region: région de recherche
-
-    Returns:
-        Liste combinée et dédupliquée de prospects
-    """
+    """Lance plusieurs recherches et combine les résultats sans doublons."""
     all_prospects = []
     seen_urls = set()
 
@@ -176,7 +227,6 @@ def search_multiple_queries(
             if prospect["linkedin_url"] not in seen_urls:
                 seen_urls.add(prospect["linkedin_url"])
                 all_prospects.append(prospect)
-        # Petite pause entre les recherches pour ne pas être bloqué
         time.sleep(1)
 
     return all_prospects
