@@ -72,9 +72,31 @@ if st.session_state.get("search_results"):
             name = p.get("name", "")
             headline = p.get("linkedin_headline", "")
             url = p.get("linkedin_url", "")
-            st.markdown(f"**{name}** — {headline}")
+            company = p.get("company", "")
+            location = p.get("location", "")
+            about = p.get("linkedin_about", "")
+
+            # Ligne principale : nom + headline
+            line = f"**{name}**"
+            if headline:
+                line += f" — {headline}"
+            st.markdown(line)
+
+            # Détails enrichis
+            details = []
+            if company:
+                details.append(f"🏢 {company}")
+            if location:
+                details.append(f"📍 {location}")
+            if details:
+                st.caption(" · ".join(details))
+
+            # Extrait du profil
+            if about:
+                st.caption(f"_{about[:150]}{'...' if len(about) > 150 else ''}_")
+
             if url:
-                st.caption(url)
+                st.caption(f"[🔗 Profil LinkedIn]({url})")
 
     st.markdown("---")
 

@@ -1,7 +1,8 @@
 """Recherche automatique de prospects sur LinkedIn via Brave Search.
 
-Brave Search fonctionne depuis les serveurs cloud (contrairement à
-Google, Bing et DuckDuckGo qui bloquent les requêtes automatisées).
+Brave Search est le seul moteur qui accepte les requêtes depuis
+les serveurs cloud (Streamlit Cloud). Parsing optimisé pour
+extraire un maximum d'infos de chaque profil LinkedIn.
 """
 
 import re
@@ -9,7 +10,7 @@ import time
 import httpx
 import structlog
 from typing import Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote
 
 log = structlog.get_logger()
 
@@ -20,224 +21,318 @@ HEADERS = {
 }
 
 
-def _extract_name_from_title(title: str) -> str:
-    """Extrait le nom depuis le titre d'un profil LinkedIn."""
-    cleaned = re.sub(r"\s*[\|\-–—]\s*LinkedIn.*$", "", title, flags=re.IGNORECASE)
-    parts = re.split(r"\s*[\-–—]\s*", cleaned, maxsplit=1)
-    name = parts[0].strip()
-    name = re.sub(r"[^\w\s\-éèêëàâäùûüôöîïçÉÈÊËÀÂÄÙÛÜÔÖÎÏÇ']", "", name)
-    return name.strip()
-
-
-def _extract_headline_from_title(title: str) -> str:
-    """Extrait le headline depuis le titre d'un résultat LinkedIn."""
-    cleaned = re.sub(r"\s*[\|]\s*LinkedIn.*$", "", title, flags=re.IGNORECASE)
-    parts = re.split(r"\s*[\-–—]\s*", cleaned, maxsplit=1)
-    if len(parts) > 1:
-        return parts[1].strip()
-    return ""
-
+# =============================================
+# Extraction d'infos depuis les résultats
+# =============================================
 
 def _extract_linkedin_url(url: str) -> Optional[str]:
     """Extrait et normalise l'URL LinkedIn d'un profil."""
+    # Décoder les URL encodées (%C3%A8 → è, etc.)
+    url = unquote(url)
     match = re.search(r"(https?://(?:www\.)?linkedin\.com/in/[\w\-]+)", url)
     if match:
         return match.group(1)
     return None
 
 
-def _extract_about_from_snippet(snippet: str) -> str:
-    """Extrait un résumé depuis le snippet de recherche."""
-    cleaned = snippet.strip()
-    cleaned = re.sub(r"<[^>]+>", "", cleaned)
-    cleaned = re.sub(r"^\d{1,2}\s\w+\s\d{4}\s*[\-–—·]\s*", "", cleaned)
-    cleaned = re.sub(r"^Voir le profil de .+ sur LinkedIn.*?\.", "", cleaned)
-    cleaned = re.sub(r"^View .+'s profile on LinkedIn.*?\.", "", cleaned)
-    return cleaned.strip()
+def _parse_title(title: str) -> dict:
+    """Parse le titre Brave pour extraire nom + headline.
+
+    Format typique : "Prénom Nom - Titre professionnel | LinkedIn"
+    Le séparateur nom/headline a des ESPACES autour du tiret (pas les tirets dans les noms).
+    """
+    # Retirer " | LinkedIn" à la fin
+    cleaned = re.sub(r"\s*\|\s*LinkedIn.*$", "", title, flags=re.IGNORECASE)
+
+    # Séparer nom et headline — EXIGER des espaces autour du tiret
+    # "Glaude-Brécy - Coach" → split sur " - " (avec espaces), pas sur "-" dans le nom
+    parts = re.split(r"\s+[\-–—]\s+", cleaned, maxsplit=1)
+
+    name = parts[0].strip()
+    # Nettoyer le nom (garder lettres, accents, espaces, tirets, points)
+    name = re.sub(r"[^\w\s\-éèêëàâäùûüôöîïçÉÈÊËÀÂÄÙÛÜÔÖÎÏÇ'.]", "", name).strip()
+
+    headline = ""
+    if len(parts) > 1:
+        headline = parts[1].strip()
+        headline = re.sub(r"<[^>]+>", "", headline).strip()
+
+    return {"name": name, "headline": headline}
 
 
-def _build_prospect(name: str, headline: str, about: str, linkedin_url: str) -> dict:
-    """Construit un dict prospect standard."""
-    return {
-        "name": name,
-        "company": "",
-        "email": "",
-        "linkedin_url": linkedin_url,
-        "role": headline,
-        "industry": "",
-        "custom_signal": "",
-        "linkedin_headline": headline,
-        "linkedin_about": about,
-        "recent_activity": "",
-        "skills": "",
-        "experience_summary": "",
-        "pain_points": "",
-        "mutual_context": "",
-        "tone_preference": "",
-        "source": "recherche_auto",
+def _parse_description(desc: str) -> dict:
+    """Parse la description Brave pour extraire des infos enrichies.
+
+    Brave renvoie souvent : "Date - Experience: Titre · Location: Ville · X connections..."
+    """
+    info = {
+        "experience": "",
+        "education": "",
+        "location": "",
+        "connections": "",
+        "about": "",
     }
 
+    if not desc:
+        return info
 
-def _search_brave(search_query: str, max_results: int) -> list[dict]:
-    """Recherche via Brave Search (scraping HTML).
+    # Nettoyer les balises HTML et entités
+    desc = re.sub(r"<[^>]+>", "", desc)
+    desc = desc.replace("&nbsp;", " ").replace("&amp;", "&").strip()
 
-    Brave ne bloque pas les requêtes depuis les serveurs cloud.
+    # Extraire Experience
+    exp_match = re.search(r"Experience:\s*(.+?)(?:\s*·|\s*$)", desc)
+    if exp_match:
+        info["experience"] = exp_match.group(1).strip()
+
+    # Extraire Education
+    edu_match = re.search(r"Education:\s*(.+?)(?:\s*·|\s*$)", desc)
+    if edu_match:
+        info["education"] = edu_match.group(1).strip()
+
+    # Extraire Location
+    loc_match = re.search(r"Location:\s*(.+?)(?:\s*·|\s*$)", desc)
+    if loc_match:
+        info["location"] = loc_match.group(1).strip()
+
+    # Extraire Connections
+    conn_match = re.search(r"(\d+\+?)\s*connect", desc, re.IGNORECASE)
+    if conn_match:
+        info["connections"] = conn_match.group(1)
+
+    # Le reste comme "about" (texte libre au début, avant les champs structurés)
+    about_text = desc
+    # Retirer les dates au début
+    about_text = re.sub(r"^\d{1,2}\s\w+\s\d{4}\s*[\-–—·]\s*", "", about_text)
+    # Retirer les champs structurés
+    about_text = re.sub(r"(?:Experience|Education|Location):\s*.+?(?:\s*·|\s*$)", "", about_text)
+    about_text = re.sub(r"\d+\+?\s*connect.*$", "", about_text, flags=re.IGNORECASE)
+    about_text = re.sub(r"View .+'s profile on LinkedIn.*$", "", about_text, flags=re.IGNORECASE)
+    about_text = re.sub(r"Voir le profil de .+ sur LinkedIn.*$", "", about_text, flags=re.IGNORECASE)
+    about_text = re.sub(r"Join now to see all activity", "", about_text)
+    about_text = re.sub(r"·\s*·", "", about_text)
+    about_text = re.sub(r"\s+", " ", about_text).strip(" ·-–—")
+
+    if about_text and len(about_text) > 10:
+        info["about"] = about_text
+
+    return info
+
+
+# =============================================
+# Brave Search
+# =============================================
+
+def _brave_get(params: dict, max_retries: int = 3) -> str:
+    """Fait une requête GET à Brave Search avec retries."""
+    for attempt in range(max_retries):
+        resp = httpx.get(
+            "https://search.brave.com/search",
+            params=params,
+            headers=HEADERS,
+            timeout=15.0,
+            follow_redirects=True,
+        )
+        if resp.status_code == 429:
+            wait = 2 ** attempt
+            log.warning("brave_rate_limit", attempt=attempt + 1, wait=wait)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.text
+    raise Exception("Brave Search temporairement indisponible. Réessayez dans 1 minute.")
+
+
+def _search_brave(query: str, max_results: int) -> list[dict]:
+    """Recherche via Brave Search avec parsing optimisé.
+
+    Retourne une liste de dicts avec toutes les infos extraites.
     """
-    results = []
+    search_query = f"site:linkedin.com/in {query}"
+    html = _brave_get({"q": search_query, "source": "web"})
 
-    resp = httpx.get(
-        "https://search.brave.com/search",
-        params={"q": search_query, "source": "web"},
-        headers=HEADERS,
-        timeout=15.0,
-        follow_redirects=True,
-    )
-    resp.raise_for_status()
-    html = resp.text
-
-    # Extraire les résultats Brave Search
-    # Format: <a href="https://linkedin.com/in/...">
-    # avec <span class="snippet-title">Titre</span>
-    # et <p class="snippet-description">Description</p>
-
-    # Pattern 1 : extraire blocs de résultats
+    # Parser avec le format Brave : data-pos, href, title, content
     result_pattern = re.compile(
-        r'<a[^>]*href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)"[^>]*>.*?'
-        r'(?:<span[^>]*>|<div[^>]*>)(.*?)(?:</span>|</div>)',
+        r'data-pos="(\d+)".*?'
+        r'href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)".*?'
+        r'class="title search-snippet-title[^"]*"[^>]*>(.*?)</(?:span|div)>.*?'
+        r'class="content desktop-default-regular[^"]*"[^>]*>(.*?)</(?:div|p)>',
         re.DOTALL
     )
 
-    for url, title_html in result_pattern.findall(html):
-        clean_title = re.sub(r"<[^>]+>", "", title_html).strip()
-        if clean_title and len(clean_title) > 3:
-            results.append({
-                "href": url,
-                "title": clean_title,
-                "body": "",
-            })
+    matches = result_pattern.findall(html)
+    log.info("brave_raw_results", count=len(matches))
 
-    # Si pattern 1 ne marche pas, pattern plus large
-    if not results:
-        url_pattern = re.compile(r'href="(https?://(?:www\.)?linkedin\.com/in/[\w\-]+)"')
-        urls_found = list(set(url_pattern.findall(html)))
-
-        # Chercher les titres associés (balises <a> contenant ces URLs)
-        for url in urls_found:
-            # Chercher le titre dans le contexte autour du lien
-            escaped_url = re.escape(url)
-            title_match = re.search(
-                rf'<a[^>]*href="{escaped_url}"[^>]*>(.*?)</a>',
-                html,
-                re.DOTALL,
-            )
-            title = ""
-            if title_match:
-                title = re.sub(r"<[^>]+>", "", title_match.group(1)).strip()
-
-            # Si pas de titre dans le <a>, chercher un <h3> ou <span> proche
-            if not title or len(title) < 3:
-                context_match = re.search(
-                    rf'.{{0,500}}{escaped_url}.{{0,500}}',
-                    html,
-                    re.DOTALL,
-                )
-                if context_match:
-                    ctx = context_match.group(0)
-                    h_match = re.search(r'<(?:h[23]|span)[^>]*>(.*?)</(?:h[23]|span)>', ctx, re.DOTALL)
-                    if h_match:
-                        title = re.sub(r"<[^>]+>", "", h_match.group(1)).strip()
-
-            results.append({
-                "href": url,
-                "title": title or url.split("/in/")[-1].replace("-", " ").title(),
-                "body": "",
-            })
-
-    # Chercher aussi les snippets/descriptions pour enrichir
-    for i, result in enumerate(results):
-        url_escaped = re.escape(result["href"])
-        snippet_match = re.search(
-            rf'{url_escaped}.*?<p[^>]*>(.*?)</p>',
-            html,
-            re.DOTALL,
-        )
-        if snippet_match:
-            results[i]["body"] = re.sub(r"<[^>]+>", "", snippet_match.group(1)).strip()
-
-    log.info("brave_search_results", count=len(results))
-    return results
-
-
-def _parse_to_prospects(results: list[dict], max_results: int) -> list[dict]:
-    """Convertit les résultats bruts en prospects structurés."""
     prospects = []
     seen_urls = set()
 
-    for result in results:
+    for pos, url, title_raw, desc_raw in matches:
         if len(prospects) >= max_results:
             break
 
-        url = result.get("href", "")
-        title = result.get("title", "")
-        snippet = result.get("body", "")
+        # Nettoyer le HTML
+        title = re.sub(r"<[^>]+>", "", title_raw).strip()
+        desc = re.sub(r"<[^>]+>", "", desc_raw).strip()
 
+        # Extraire l'URL LinkedIn propre
         linkedin_url = _extract_linkedin_url(url)
-        if not linkedin_url:
-            continue
-
-        if linkedin_url in seen_urls:
+        if not linkedin_url or linkedin_url in seen_urls:
             continue
         seen_urls.add(linkedin_url)
 
-        name = _extract_name_from_title(title)
-        headline = _extract_headline_from_title(title)
-        about = _extract_about_from_snippet(snippet)
+        # Parser le titre
+        title_info = _parse_title(title)
+        name = title_info["name"]
+        headline = title_info["headline"]
 
         if not name or len(name) < 3:
             continue
 
-        prospects.append(_build_prospect(name, headline, about, linkedin_url))
+        # Parser la description pour enrichir
+        desc_info = _parse_description(desc)
+
+        # L'experience LinkedIn = souvent le nom de l'entreprise/activité
+        company = desc_info["experience"]
+        # Si "experience" ressemble trop au headline, ne pas dupliquer
+        if company and headline and company.lower() == headline.lower():
+            company = ""
+
+        # Construire le prospect enrichi
+        prospect = {
+            "name": name,
+            "company": company,
+            "email": "",
+            "linkedin_url": linkedin_url,
+            "role": headline,
+            "industry": "",
+            "custom_signal": "",
+            "linkedin_headline": headline,
+            "linkedin_about": desc_info["about"],
+            "recent_activity": "",
+            "skills": "",
+            "experience_summary": desc_info["experience"],
+            "pain_points": "",
+            "mutual_context": "",
+            "tone_preference": "",
+            "location": desc_info["location"],
+            "education": desc_info["education"],
+            "connections": desc_info["connections"],
+            "source": "recherche_auto",
+        }
+        prospects.append(prospect)
 
     return prospects
 
+
+def _search_brave_page2(query: str, max_results: int) -> list[dict]:
+    """Récupère la page 2 des résultats Brave pour avoir plus de prospects."""
+    search_query = f"site:linkedin.com/in {query}"
+    html = _brave_get({"q": search_query, "source": "web", "offset": 1})
+
+    result_pattern = re.compile(
+        r'data-pos="(\d+)".*?'
+        r'href="(https?://(?:www\.)?linkedin\.com/in/[^"]+)".*?'
+        r'class="title search-snippet-title[^"]*"[^>]*>(.*?)</(?:span|div)>.*?'
+        r'class="content desktop-default-regular[^"]*"[^>]*>(.*?)</(?:div|p)>',
+        re.DOTALL
+    )
+
+    matches = result_pattern.findall(html)
+    prospects = []
+    seen_urls = set()
+
+    for pos, url, title_raw, desc_raw in matches:
+        if len(prospects) >= max_results:
+            break
+
+        title = re.sub(r"<[^>]+>", "", title_raw).strip()
+        desc = re.sub(r"<[^>]+>", "", desc_raw).strip()
+
+        linkedin_url = _extract_linkedin_url(url)
+        if not linkedin_url or linkedin_url in seen_urls:
+            continue
+        seen_urls.add(linkedin_url)
+
+        title_info = _parse_title(title)
+        name = title_info["name"]
+        headline = title_info["headline"]
+
+        if not name or len(name) < 3:
+            continue
+
+        desc_info = _parse_description(desc)
+        company = desc_info["experience"]
+        if company and headline and company.lower() == headline.lower():
+            company = ""
+
+        prospect = {
+            "name": name,
+            "company": company,
+            "email": "",
+            "linkedin_url": linkedin_url,
+            "role": headline,
+            "industry": "",
+            "custom_signal": "",
+            "linkedin_headline": headline,
+            "linkedin_about": desc_info["about"],
+            "recent_activity": "",
+            "skills": "",
+            "experience_summary": desc_info["experience"],
+            "pain_points": "",
+            "mutual_context": "",
+            "tone_preference": "",
+            "location": desc_info["location"],
+            "education": desc_info["education"],
+            "connections": desc_info["connections"],
+            "source": "recherche_auto",
+        }
+        prospects.append(prospect)
+
+    return prospects
+
+
+# =============================================
+# Fonctions publiques
+# =============================================
 
 def search_prospects(
     query: str,
     max_results: int = 20,
     region: str = "fr-fr",
 ) -> list[dict]:
-    """Recherche des profils LinkedIn correspondant à la requête."""
-    search_query = f"site:linkedin.com/in {query}"
-    log.info("prospect_search_start", query=search_query, max_results=max_results)
+    """Recherche des profils LinkedIn correspondant à la requête.
 
-    # Méthode 1 : Brave Search
+    Utilise Brave Search avec parsing enrichi.
+    Si besoin de plus de résultats, récupère aussi la page 2.
+    """
+    log.info("prospect_search_start", query=query, max_results=max_results)
+
     try:
-        raw_results = _search_brave(search_query, max_results)
-        if raw_results:
-            prospects = _parse_to_prospects(raw_results, max_results)
-            if prospects:
-                log.info("prospect_search_done", method="brave", found=len(prospects))
-                return prospects
-            else:
-                log.warning("brave_no_linkedin", raw_count=len(raw_results))
-    except Exception as e:
-        log.warning("brave_failed", error=str(e))
+        # Page 1
+        prospects = _search_brave(query, max_results)
 
-    # Méthode 2 : DuckDuckGo package (fallback)
-    try:
-        from duckduckgo_search import DDGS
-        ddgs = DDGS()
-        raw = list(ddgs.text(search_query, region=region, max_results=max_results + 10))
-        if raw:
-            prospects = _parse_to_prospects(raw, max_results)
-            if prospects:
-                log.info("prospect_search_done", method="ddg", found=len(prospects))
-                return prospects
-    except Exception as e:
-        log.warning("ddg_failed", error=str(e))
+        # Si on a besoin de plus, récupérer page 2
+        if len(prospects) < max_results:
+            time.sleep(0.5)
+            try:
+                page2 = _search_brave_page2(query, max_results - len(prospects))
+                # Dédupliquer
+                seen = {p["linkedin_url"] for p in prospects}
+                for p in page2:
+                    if p["linkedin_url"] not in seen:
+                        prospects.append(p)
+                        seen.add(p["linkedin_url"])
+                        if len(prospects) >= max_results:
+                            break
+            except Exception as e:
+                log.warning("page2_failed", error=str(e))
 
-    log.warning("prospect_search_empty", query=search_query)
-    return []
+        log.info("prospect_search_done", found=len(prospects))
+        return prospects
+
+    except Exception as e:
+        log.error("prospect_search_error", error=str(e))
+        raise
 
 
 def search_multiple_queries(
