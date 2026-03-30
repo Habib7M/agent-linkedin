@@ -27,6 +27,7 @@ RÈGLES :
 - Ton naturel, empathique. PAS commercial.
 - < 100 mots
 - Le cadre A-C-A est INVISIBLE dans le message final
+- ACCORD DU GENRE : Détermine le genre à partir du PRÉNOM du prospect. Accorde au féminin si femme, masculin si homme.
 - INTERDICTION : "merci pour votre réponse", "ravi de votre retour", "n'hésitez pas"
 """
 

@@ -61,6 +61,7 @@ RÈGLES :
 - Vouvoiement par défaut
 - Pas de bullet points, pas de gras, pas d'émojis
 - Écrire comme un humain qui envoie un vrai message, pas comme un robot
+- ACCORD DU GENRE : Détermine le genre du prospect à partir de son PRÉNOM. Accorde TOUS les adjectifs et participes passés au féminin si c'est une femme (ex: "interpellée", "convaincue", "passionnée"), au masculin si c'est un homme. C'est CRUCIAL en français.
 - JAMAIS ces phrases : "j'espère que vous allez bien", "je me permets de", "suite à", "n'hésitez pas", "j'ai vu votre profil", "je me suis permis de regarder", "je serais ravi de", "dans le cadre de", "solutions adaptées à vos besoins", "synergie", "optimiser", "je vous contacte car", "permettez-moi de me présenter"
 """
 
