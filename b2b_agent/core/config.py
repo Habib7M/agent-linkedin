@@ -40,7 +40,7 @@ class AppConfig:
     # App
     app_password: str = ""
     rate_limit_per_hour: int = 50
-    min_score: int = 40
+    min_score: int = 15
 
     # Contexte métier
     coach_product: str = "Agent de prospection LinkedIn"

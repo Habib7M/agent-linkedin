@@ -84,7 +84,7 @@ def _build_personalized_prompt(
     ton = parse_brief_section(brief, "TON_RECOMMANDÉ")
 
     step_instructions = {
-        "cold": "C'est le PREMIER contact. Le prospect ne te connaît pas. L'objectif est d'éveiller la curiosité sans vendre.",
+        "cold": "C'est le PREMIER contact. Le prospect ne te connaît pas. COMMENCE par 'Bonjour {prénom},' — c'est la base de la politesse. L'objectif est d'éveiller la curiosité sans vendre.",
         "followup_1": "C'est un FOLLOW-UP après un premier message sans réponse. Change d'angle, apporte de la valeur (insight, cas concret, question).",
         "followup_2": "C'est le DEUXIÈME follow-up. Sois bref. Apporte un élément nouveau (article, témoignage, chiffre).",
         "breakup": "C'est le DERNIER message. Sois respectueux, laisse la porte ouverte. Pas de culpabilisation.",

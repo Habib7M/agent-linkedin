@@ -54,14 +54,18 @@ def score_prospect(prospect: dict) -> int:
     if linkedin and "linkedin.com" in linkedin.lower():
         score += 15
 
-    # Rôle décideur
+    # Rôle décideur — chercher dans role, headline ET about
     role = (prospect.get("role", "") or "").lower()
-    if any(kw in role for kw in DECISION_MAKER_KEYWORDS):
+    headline = (prospect.get("linkedin_headline", "") or "").lower()
+    about = (prospect.get("linkedin_about", "") or "").lower()
+    all_text = f"{role} {headline} {about}"
+    if any(kw in all_text for kw in DECISION_MAKER_KEYWORDS):
         score += 25
 
-    # Secteur aligné
+    # Secteur aligné — chercher aussi dans role/headline/about
     industry = (prospect.get("industry", "") or "").lower()
-    if any(kw in industry for kw in ALIGNED_INDUSTRIES):
+    all_industry = f"{industry} {all_text}"
+    if any(kw in all_industry for kw in ALIGNED_INDUSTRIES):
         score += 20
 
     # Custom signal
