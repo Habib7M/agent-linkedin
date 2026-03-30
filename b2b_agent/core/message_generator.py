@@ -59,8 +59,9 @@ RÈGLES :
 - Email : < 120 mots, sujet personnalisé sur la première ligne "Sujet: ..."
 - LinkedIn : < 280 caractères, pas de sujet, pas de formule de politesse
 - Vouvoiement par défaut
-- Pas de bullet points, pas de gras, pas d'émojis
-- Écrire comme un humain qui envoie un vrai message, pas comme un robot
+- Pas de bullet points, pas de gras, pas d'émojis, pas de tirets (—, –, -) dans le texte
+- JAMAIS de tirets cadratins (—) ni de tirets longs (–). Utilise des virgules, des points ou reformule la phrase autrement.
+- Écrire comme un humain qui envoie un vrai message, pas comme un robot. Le message ne doit JAMAIS avoir l'air généré par une IA.
 - ACCORD DU GENRE : Détermine le genre du prospect à partir de son PRÉNOM. Accorde TOUS les adjectifs et participes passés au féminin si c'est une femme (ex: "interpellée", "convaincue", "passionnée"), au masculin si c'est un homme. C'est CRUCIAL en français.
 - JAMAIS ces phrases : "j'espère que vous allez bien", "je me permets de", "suite à", "n'hésitez pas", "j'ai vu votre profil", "je me suis permis de regarder", "je serais ravi de", "dans le cadre de", "solutions adaptées à vos besoins", "synergie", "optimiser", "je vous contacte car", "permettez-moi de me présenter"
 """
@@ -143,6 +144,10 @@ def _validate_message(text: str, channel: str, prospect: dict) -> list[str]:
     company = prospect.get("company", "")
     if name and name.lower() not in text.lower() and company.lower() not in text.lower():
         issues.append("Aucune mention du nom ou de l'entreprise du prospect")
+
+    # Tirets cadratins (signature typique de l'IA)
+    if "—" in text or "–" in text:
+        issues.append("Tirets cadratins détectés (style IA)")
 
     # Placeholders non résolus
     if "{" in text and "}" in text:
